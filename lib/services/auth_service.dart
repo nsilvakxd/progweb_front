@@ -2,9 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import '../config/config.dart';
 
 class AuthService extends ChangeNotifier {
-  static const String baseUrl = 'http://localhost:8000'; // Ajuste para seu IP
+  static String get baseUrl => Config.apiUrl;
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'current_user';
 
