@@ -153,11 +153,9 @@ class _UsersScreenState extends State<UsersScreen> {
             await widget.apiService.updateUser(
               user.id,
               UserUpdate(
-                email: userData.email,
                 fullName: userData.fullName,
                 profileImageUrl: userData.profileImageUrl,
                 profileImageBase64: userData.profileImageBase64,
-                roleId: userData.roleId,
               ),
             );
           }

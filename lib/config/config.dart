@@ -1,45 +1,30 @@
+// lib/config/config.dart
 import 'package:flutter/foundation.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+
+// Importa nosso seletor, que fornecerá a função correta para a plataforma.
+import 'config_helper.dart';
 
 class Config {
   // URLs da API
-  static const String productionApiUrl =
-      'https://programacaiii-api.onrender.com';
-  static const String developmentApiUrl =
-      'http://localhost:8000'; // FastAPI rodando na porta 8000
+  static const String productionApiUrl = 'https://progweb_front.onrender.com';
+  static const String developmentApiUrl = 'http://localhost:8000';
 
-  // URL atual baseada na URL do navegador
+  // A lógica agora é mais limpa e segura para todas as plataformas.
   static String get apiUrl {
-    // Se estiver rodando na web, verifica a URL atual
-    if (kIsWeb) {
-      final currentUrl = html.window.location.href;
-
-      // Se a URL contém localhost ou 127.0.0.1, usa desenvolvimento
-      if (currentUrl.contains('localhost') ||
-          currentUrl.contains('127.0.0.1')) {
-        return developmentApiUrl;
-      }
-
-      // Caso contrário, usa produção
-      return productionApiUrl;
+    // Caso 1: Ambiente de desenvolvimento (qualquer plataforma)
+    // - Para web, isDevelopmentOnWeb() verifica a URL.
+    // - Para mobile/desktop, kReleaseMode é falso.
+    if ((kIsWeb && isDevelopmentOnWeb()) || (!kIsWeb && !kReleaseMode)) {
+      return developmentApiUrl;
     }
 
-    // Para mobile/desktop, usa o modo de compilação
-    if (kReleaseMode) {
-      return productionApiUrl;
-    }
-
-    return developmentApiUrl;
+    // Caso 2: Ambiente de produção (padrão)
+    return productionApiUrl;
   }
 
-  // Também pode verificar se está rodando na web
+  // O resto da sua classe permanece igual.
   static bool get isWeb => kIsWeb;
-
-  // Versão do app
   static const String appVersion = '1.0.0';
-
-  // Timeout das requisições
   static const Duration connectTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 10);
 }

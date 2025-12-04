@@ -1,3 +1,6 @@
+// lib/services/auth_service.dart
+
+import 'dart:convert'; // <-- IMPORTAÇÃO NOVA
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +29,16 @@ class AuthService extends ChangeNotifier {
 
     _prefs = await SharedPreferences.getInstance();
     await _loadSavedAuth();
+
+    // --- MUDANÇA ---
+    // Se encontramos um token salvo, precisamos buscar os dados do usuário
+    // para validar o token e popular o _currentUser
+    if (isAuthenticated) {
+      print('Token encontrado no cache, validando e buscando dados do usuário...');
+      await _fetchCurrentUser();
+    }
+    // --- FIM DA MUDANÇA ---
+
     _isInitialized = true;
   }
 
@@ -39,13 +52,8 @@ class AuthService extends ChangeNotifier {
     if (kIsWeb) {
       _dio.options.headers.addAll({
         'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        // O content-type é definido na própria chamada de login
       });
-
-      // Remove headers que podem causar preflight
-      _dio.options.headers.remove('Access-Control-Allow-Origin');
-      _dio.options.headers.remove('Access-Control-Allow-Methods');
-      _dio.options.headers.remove('Access-Control-Allow-Headers');
     }
 
     // Interceptor para logs e debugging
@@ -86,18 +94,21 @@ class AuthService extends ChangeNotifier {
       _token = _prefs!.getString(_tokenKey);
 
       // Carrega dados do usuário se existirem
-      final userJson = _prefs!.getString(_userKey);
-      if (userJson != null) {
-        // TODO: Implementar deserialização do User quando necessário
-        // _currentUser = User.fromJson(jsonDecode(userJson));
+      final userJsonString = _prefs!.getString(_userKey);
+      if (userJsonString != null) {
+        // --- MUDANÇA ---
+        // Agora vamos realmente desserializar o usuário salvo
+        _currentUser = User.fromJson(jsonDecode(userJsonString));
+        print('Usuário carregado do cache: ${_currentUser?.fullName}');
+        // --- FIM DA MUDANÇA ---
       }
 
       if (_token != null) {
-        print('Token carregado do cache: ${_token!.substring(0, 20)}...');
-        notifyListeners();
+        print('Token carregado do cache.');
+        // notifyListeners(); // Não notifica aqui, deixa o initializeAuth controlar
       }
     } catch (e) {
-      print('Erro ao carregar autenticação salva: $e');
+      print('Erro ao carregar autenticação salva (cache corrompido?): $e');
       // Se houver erro, limpa os dados corrompidos
       await _clearSavedAuth();
     }
@@ -114,8 +125,10 @@ class AuthService extends ChangeNotifier {
       }
 
       if (_currentUser != null) {
-        // TODO: Implementar serialização do User quando necessário
-        // await _prefs!.setString(_userKey, jsonEncode(_currentUser!.toJson()));
+        // --- MUDANÇA ---
+        // Agora vamos realmente serializar o usuário para salvar
+        await _prefs!.setString(_userKey, jsonEncode(_currentUser!.toJson()));
+        // --- FIM DA MUDANÇA ---
         print('Dados do usuário salvos no cache');
       }
     } catch (e) {
@@ -158,14 +171,22 @@ class AuthService extends ChangeNotifier {
         final data = response.data;
         _token = data['access_token'];
 
-        // Salva o token no localStorage
-        await _saveAuth();
-
+        // Não salva o token ainda, espera buscar o usuário
+        
+        // --- MUDANÇA ---
         // Buscar dados do usuário atual
         await _fetchCurrentUser();
+        // --- FIM DA MUDANÇA ---
 
-        notifyListeners();
-        return true;
+        // Se _fetchCurrentUser foi bem sucedido, _currentUser não será nulo
+        if (_currentUser != null) {
+          await _saveAuth(); // Agora salva o token E o usuário
+          notifyListeners();
+          return true;
+        }
+        
+        // Se _fetchCurrentUser falhou, _currentUser será nulo e o login falha
+        return false;
       }
       return false;
     } catch (e) {
@@ -173,83 +194,57 @@ class AuthService extends ChangeNotifier {
       if (e is DioException) {
         print('Dio Error: ${e.message}');
         print('Response: ${e.response?.data}');
-
-        // Se for erro de CORS, tentar abordagem alternativa
-        if (e.type == DioExceptionType.connectionError ||
-            e.message?.contains('CORS') == true) {
-          return await _tryAlternativeLogin(email, password);
-        }
       }
+      // O login alternativo não é mais necessário com o CORS corrigido
       return false;
     }
   }
 
-  Future<bool> _tryAlternativeLogin(String email, String password) async {
+  // O _tryAlternativeLogin não é mais necessário
+  // Future<bool> _tryAlternativeLogin(String email, String password) async { ... }
+
+  // --- FUNÇÃO ATUALIZADA ---
+  Future<void> _fetchCurrentUser() async {
+    if (_token == null) {
+      print("Fetch de usuário falhou: token é nulo.");
+      return;
+    }
+
     try {
-      print('Tentando login alternativo...');
+      // Cria uma instância de Dio APENAS para esta chamada,
+      // já com o token de autorização.
+      final authDio = Dio();
+      authDio.options.baseUrl = baseUrl;
+      authDio.options.headers['Authorization'] = 'Bearer $_token';
+      authDio.options.headers['Accept'] = 'application/json';
 
-      // Criar uma nova instância do Dio com configurações simples
-      final simpleDio = Dio();
-      simpleDio.options.baseUrl = baseUrl;
-      simpleDio.options.connectTimeout = const Duration(seconds: 30);
-      simpleDio.options.receiveTimeout = const Duration(seconds: 30);
-
-      // Tentar com headers mínimos
-      final response = await simpleDio.post(
-        '/auth/login',
-        data: 'grant_type=password&username=$email&password=$password',
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          headers: {'Accept': 'application/json'},
-        ),
-      );
+      print('Buscando dados do usuário em /users/me');
+      final response = await authDio.get('/users/me');
 
       if (response.statusCode == 200) {
-        final data = response.data;
-        _token = data['access_token'];
-
-        // Salva o token no localStorage
-        await _saveAuth();
-
-        await _fetchCurrentUser();
-        notifyListeners();
-        return true;
+        // Deserializa o usuário e o armazena
+        final user = User.fromJson(response.data);
+        setCurrentUser(user); // Isso vai notificar os listeners
+        print('Usuário atual definido: ${user.fullName} (${user.role.name})');
+      } else {
+        // Se falhar (ex: 401), limpa os dados
+        print('Falha ao buscar usuário, limpando sessão.');
+        await logout(); // Faz o logout completo
       }
-      return false;
     } catch (e) {
-      print('Erro no login alternativo: $e');
-      return false;
+      print('Erro ao buscar usuário atual (token pode ter expirado): $e');
+      // Se der erro (ex: 401 Unauthorized), faz o logout
+      await logout();
     }
   }
 
-  Future<void> _fetchCurrentUser() async {
-    if (_token == null) return;
-
-    try {
-      // Tentar buscar usuário usando a API de usuários
-      // Para isso, vamos precisar do ID do usuário ou buscar pelo token
-      // Por enquanto, vamos simular com o primeiro usuário admin para teste
-      await _tryFetchUserFromAPI();
-    } catch (e) {
-      print('Erro ao buscar usuário atual: $e');
-    }
-  }
-
-  Future<void> _tryFetchUserFromAPI() async {
-    try {
-      // Para buscar usuário atual, usaremos uma instância externa do ApiService
-      // Por enquanto, deixaremos como null até implementar endpoint /me
-      _currentUser = null;
-    } catch (e) {
-      print('Erro ao buscar usuário da API: $e');
-      _currentUser = null;
-    }
-  }
+  // _tryFetchUserFromAPI foi substituída por _fetchCurrentUser
+  // Future<void> _tryFetchUserFromAPI() async { ... }
 
   // Método para definir o usuário atual externamente
   void setCurrentUser(User? user) {
     _currentUser = user;
-    notifyListeners();
+    // Não notifica aqui, deixa o login/logout controlar
   }
 
   Future<void> logout() async {
