@@ -1,5 +1,4 @@
-Miscellaneous
-
+# Miscellaneous
 *.class
 *.log
 *.pyc
@@ -13,23 +12,19 @@ Miscellaneous
 .swiftpm/
 migrate_working_dir/
 
-Node / Web
-
+# Node / Web
 node_modules/
 
-IntelliJ related
-
+# IntelliJ related
 *.iml
 *.ipr
 *.iws
 .idea/
 
-VS Code related
-
+# VS Code related
 #.vscode/
 
-Flutter/Dart/Pub related
-
+# Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
@@ -39,20 +34,16 @@ Flutter/Dart/Pub related
 .pub/
 /build/
 
-Web related
-
+# Web related
 lib/generated_plugin_registrant.dart
 
-Symbolication related
-
+# Symbolication related
 app.*.symbols
 
-Obfuscation related
-
+# Obfuscation related
 app.*.map.json
 
-Android Studio related
-
+# Android Studio related
 /android/app/debug
 /android/app/profile
 /android/app/release
