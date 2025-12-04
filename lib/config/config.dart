@@ -6,7 +6,7 @@ import 'config_helper.dart';
 
 class Config {
   // URLs da API
-  static const String productionApiUrl = 'https://progweb_front.onrender.com';
+  static const String productionApiUrl = 'https://progweb-back.onrender.com';
   static const String developmentApiUrl = 'http://localhost:8000';
 
   // A lógica agora é mais limpa e segura para todas as plataformas.
