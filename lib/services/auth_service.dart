@@ -1,6 +1,6 @@
 // lib/services/auth_service.dart
 
-import 'dart:convert'; // <-- IMPORTAÇÃO NOVA
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,147 +23,80 @@ class AuthService extends ChangeNotifier {
     _configureDio();
   }
 
-  /// Inicializa o SharedPreferences e carrega dados salvos
-  Future<void> initializeAuth() async {
-    if (_isInitialized) return; // Evita reinicializar
+  // Getters públicos
+  bool get isAuthenticated => _token != null;
+  User? get currentUser => _currentUser;
+  String? get token => _token;
 
-    _prefs = await SharedPreferences.getInstance();
-    await _loadSavedAuth();
-
-    // --- MUDANÇA ---
-    // Se encontramos um token salvo, precisamos buscar os dados do usuário
-    // para validar o token e popular o _currentUser
-    if (isAuthenticated) {
-      print('Token encontrado no cache, validando e buscando dados do usuário...');
-      await _fetchCurrentUser();
-    }
-    // --- FIM DA MUDANÇA ---
-
-    _isInitialized = true;
+  /// Header auxiliar para ser usado em outros Services (VakinhaService, etc)
+  Map<String, String> get authHeaders {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_token',
+    };
   }
 
+  /// Configuração inicial do Dio (Timeouts e Interceptors)
   void _configureDio() {
     _dio.options.baseUrl = baseUrl;
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(seconds: 30);
     _dio.options.sendTimeout = const Duration(seconds: 30);
 
-    // Configurações específicas para web
     if (kIsWeb) {
-      _dio.options.headers.addAll({
-        'Accept': 'application/json',
-        // O content-type é definido na própria chamada de login
-      });
+      _dio.options.headers['Accept'] = 'application/json';
     }
 
-    // Interceptor para logs e debugging
+    // Interceptor para logs (ajuda muito no debug)
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          print('Enviando requisição para: ${options.uri}');
-          print('Headers: ${options.headers}');
-          print('Data: ${options.data}');
+          debugPrint('--> ${options.method} ${options.uri}');
           handler.next(options);
         },
         onResponse: (response, handler) {
-          print('Resposta recebida: ${response.statusCode}');
+          debugPrint('<-- ${response.statusCode} ${response.requestOptions.uri}');
           handler.next(response);
         },
         onError: (error, handler) {
-          print('Erro na requisição: ${error.message}');
-          print('Tipo do erro: ${error.type}');
-          if (error.response != null) {
-            print('Status Code: ${error.response!.statusCode}');
-            print('Response data: ${error.response!.data}');
-          }
+          debugPrint('Error: ${error.message}');
+          debugPrint('Response: ${error.response?.data}');
           handler.next(error);
         },
       ),
     );
   }
 
-  bool get isAuthenticated => _token != null;
-  User? get currentUser => _currentUser;
-  String? get token => _token;
+  /// Inicializa o SharedPreferences e restaura a sessão
+  Future<void> initializeAuth() async {
+    if (_isInitialized) return;
 
-  /// Carrega dados de autenticação salvos no localStorage
-  Future<void> _loadSavedAuth() async {
-    try {
-      if (_prefs == null) return;
+    _prefs = await SharedPreferences.getInstance();
+    await _loadSavedAuth();
 
-      _token = _prefs!.getString(_tokenKey);
-
-      // Carrega dados do usuário se existirem
-      final userJsonString = _prefs!.getString(_userKey);
-      if (userJsonString != null) {
-        // --- MUDANÇA ---
-        // Agora vamos realmente desserializar o usuário salvo
-        _currentUser = User.fromJson(jsonDecode(userJsonString));
-        print('Usuário carregado do cache: ${_currentUser?.fullName}');
-        // --- FIM DA MUDANÇA ---
-      }
-
-      if (_token != null) {
-        print('Token carregado do cache.');
-        // notifyListeners(); // Não notifica aqui, deixa o initializeAuth controlar
-      }
-    } catch (e) {
-      print('Erro ao carregar autenticação salva (cache corrompido?): $e');
-      // Se houver erro, limpa os dados corrompidos
-      await _clearSavedAuth();
+    // Se existe um token salvo, tenta validar buscando os dados atuais do usuário
+    if (isAuthenticated) {
+      debugPrint('Token encontrado. Validando sessão...');
+      await _fetchCurrentUser();
     }
+
+    _isInitialized = true;
+    notifyListeners();
   }
 
-  /// Salva dados de autenticação no localStorage
-  Future<void> _saveAuth() async {
-    try {
-      if (_prefs == null) return;
-
-      if (_token != null) {
-        await _prefs!.setString(_tokenKey, _token!);
-        print('Token salvo no cache');
-      }
-
-      if (_currentUser != null) {
-        // --- MUDANÇA ---
-        // Agora vamos realmente serializar o usuário para salvar
-        await _prefs!.setString(_userKey, jsonEncode(_currentUser!.toJson()));
-        // --- FIM DA MUDANÇA ---
-        print('Dados do usuário salvos no cache');
-      }
-    } catch (e) {
-      print('Erro ao salvar autenticação: $e');
-    }
-  }
-
-  /// Remove dados de autenticação do localStorage
-  Future<void> _clearSavedAuth() async {
-    try {
-      if (_prefs != null) {
-        await _prefs!.remove(_tokenKey);
-        await _prefs!.remove(_userKey);
-        print('Cache de autenticação limpo');
-      }
-    } catch (e) {
-      print('Erro ao limpar cache: $e');
-    }
-  }
-
+  /// Realiza o Login
   Future<bool> login(String email, String password) async {
     try {
-      // Primeira tentativa: POST com form-urlencoded
+      // 1. Obter o Token (Form-UrlEncoded)
       final response = await _dio.post(
         '/auth/login',
         data: {
-          'grant_type': 'password',
-          'username': email,
+          'grant_type': 'password', // Padrão OAuth2
+          'username': email,        // FastAPI exige 'username'
           'password': password,
         },
         options: Options(
           contentType: 'application/x-www-form-urlencoded',
-          headers: {'Accept': 'application/json'},
-          // Força a não usar preflight request
-          method: 'POST',
         ),
       );
 
@@ -171,96 +104,101 @@ class AuthService extends ChangeNotifier {
         final data = response.data;
         _token = data['access_token'];
 
-        // Não salva o token ainda, espera buscar o usuário
-        
-        // --- MUDANÇA ---
-        // Buscar dados do usuário atual
-        await _fetchCurrentUser();
-        // --- FIM DA MUDANÇA ---
+        // 2. Com o token em mãos, buscar os detalhes do usuário (/users/me)
+        bool userFetched = await _fetchCurrentUser();
 
-        // Se _fetchCurrentUser foi bem sucedido, _currentUser não será nulo
-        if (_currentUser != null) {
-          await _saveAuth(); // Agora salva o token E o usuário
+        if (userFetched && _currentUser != null) {
+          // 3. Se tudo deu certo, salva no disco
+          await _saveAuth();
           notifyListeners();
           return true;
         }
-        
-        // Se _fetchCurrentUser falhou, _currentUser será nulo e o login falha
-        return false;
       }
       return false;
     } catch (e) {
-      print('Erro no login: $e');
-      if (e is DioException) {
-        print('Dio Error: ${e.message}');
-        print('Response: ${e.response?.data}');
-      }
-      // O login alternativo não é mais necessário com o CORS corrigido
+      debugPrint('Erro no login: $e');
       return false;
     }
   }
 
-  // O _tryAlternativeLogin não é mais necessário
-  // Future<bool> _tryAlternativeLogin(String email, String password) async { ... }
-
-  // --- FUNÇÃO ATUALIZADA ---
-  Future<void> _fetchCurrentUser() async {
-    if (_token == null) {
-      print("Fetch de usuário falhou: token é nulo.");
-      return;
-    }
+  /// Busca os dados do usuário logado usando o token atual
+  Future<bool> _fetchCurrentUser() async {
+    if (_token == null) return false;
 
     try {
-      // Cria uma instância de Dio APENAS para esta chamada,
-      // já com o token de autorização.
-      final authDio = Dio();
-      authDio.options.baseUrl = baseUrl;
-      authDio.options.headers['Authorization'] = 'Bearer $_token';
-      authDio.options.headers['Accept'] = 'application/json';
-
-      print('Buscando dados do usuário em /users/me');
-      final response = await authDio.get('/users/me');
+      // Usa a instância principal do _dio, injetando o Header manualmente nesta requisição
+      final response = await _dio.get(
+        '/users/me',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $_token',
+          },
+        ),
+      );
 
       if (response.statusCode == 200) {
-        // Deserializa o usuário e o armazena
-        final user = User.fromJson(response.data);
-        setCurrentUser(user); // Isso vai notificar os listeners
-        print('Usuário atual definido: ${user.fullName} (${user.role.name})');
+        _currentUser = User.fromJson(response.data);
+        debugPrint('Usuário atualizado: ${_currentUser?.fullName}');
+        return true;
       } else {
-        // Se falhar (ex: 401), limpa os dados
-        print('Falha ao buscar usuário, limpando sessão.');
-        await logout(); // Faz o logout completo
+        await logout();
+        return false;
       }
     } catch (e) {
-      print('Erro ao buscar usuário atual (token pode ter expirado): $e');
-      // Se der erro (ex: 401 Unauthorized), faz o logout
-      await logout();
+      debugPrint('Erro ao buscar usuário (Token expirado?): $e');
+      // Se der erro 401 (Unauthorized), força logout
+      if (e is DioException && e.response?.statusCode == 401) {
+        await logout();
+      }
+      return false;
     }
   }
 
-  // _tryFetchUserFromAPI foi substituída por _fetchCurrentUser
-  // Future<void> _tryFetchUserFromAPI() async { ... }
-
-  // Método para definir o usuário atual externamente
-  void setCurrentUser(User? user) {
-    _currentUser = user;
-    // Não notifica aqui, deixa o login/logout controlar
-  }
-
+  /// Logout completo
   Future<void> logout() async {
     _token = null;
     _currentUser = null;
-
-    // Remove dados do localStorage
     await _clearSavedAuth();
-
     notifyListeners();
   }
 
-  Map<String, String> get authHeaders {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $_token',
-    };
+  // --- MÉTODOS DE PERSISTÊNCIA (PRIVADOS) ---
+
+  Future<void> _loadSavedAuth() async {
+    try {
+      if (_prefs == null) return;
+
+      _token = _prefs!.getString(_tokenKey);
+      final userJson = _prefs!.getString(_userKey);
+
+      if (userJson != null) {
+        _currentUser = User.fromJson(jsonDecode(userJson));
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar cache: $e');
+      await _clearSavedAuth();
+    }
+  }
+
+  Future<void> _saveAuth() async {
+    try {
+      if (_prefs == null) return;
+
+      if (_token != null) {
+        await _prefs!.setString(_tokenKey, _token!);
+      }
+      if (_currentUser != null) {
+        await _prefs!.setString(_userKey, jsonEncode(_currentUser!.toJson()));
+      }
+    } catch (e) {
+      debugPrint('Erro ao salvar auth: $e');
+    }
+  }
+
+  Future<void> _clearSavedAuth() async {
+    if (_prefs != null) {
+      await _prefs!.remove(_tokenKey);
+      await _prefs!.remove(_userKey);
+    }
   }
 }
