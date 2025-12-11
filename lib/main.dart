@@ -7,6 +7,7 @@ import 'config/config.dart';
 import 'widgets/environment_banner.dart';
 import 'package:flutter/material.dart';
 import 'config/app_theme.dart';
+import 'package:provider/provider.dart';
 
 void main() {
   // Imprime a URL da API sendo usada no console

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+
 class AppTheme {
   // 1. Defina suas cores principais aqui
   static const Color primaryColor = Color(0xFF673AB7); // Roxo (Deep Purple)
