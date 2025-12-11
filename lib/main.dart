@@ -5,6 +5,8 @@ import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'config/config.dart';
 import 'widgets/environment_banner.dart';
+import 'package:flutter/material.dart';
+import 'config/app_theme.dart';
 
 void main() {
   // Imprime a URL da API sendo usada no console
@@ -13,7 +15,7 @@ void main() {
   debugPrint('📦 Versão: ${Config.appVersion}');
   debugPrint('🔧 Modo: ${Config.apiUrl.contains('localhost') ? 'DESENVOLVIMENTO' : 'PRODUÇÃO'}');
   
-  runApp(MyApp());
+  runApp( MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -21,18 +23,14 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [ChangeNotifierProvider(create: (_) => AuthService())],
-      child: EnvironmentBanner(
-        child: MaterialApp(
-          title: 'Admin App',
-          theme: ThemeData(
-            primarySwatch: Colors.blue,
-            visualDensity: VisualDensity.adaptivePlatformDensity,
-          ),
+
+      child: MaterialApp(
+          title: 'Vakinha App',
+          debugShowMaterialGrid: false,
+          theme: AppTheme.lightTheme,
           home: AuthWrapper(),
-          debugShowCheckedModeBanner: false,
         ),
-      ),
-    );
+      );
   }
 }
 
