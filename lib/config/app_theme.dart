@@ -75,14 +75,14 @@ class AppTheme {
       ),
       
       // Estilo dos Cards
-      cardTheme: CardThemeData( 
-        color: Colors.white,
-        elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+      cardTheme: CardThemeData( // <--- Note o "Data" no final
+      color: Colors.white,
+      elevation: 4,
+      shadowColor: Colors.black.withOpacity(0.1),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
+    ),
     );
   }
 }
